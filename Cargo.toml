@@ -5,6 +5,10 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.28"
-ed-journals = { version = "0.13", default-features = false }
+# allow-unknown is required: current game versions emit signal types the
+# crate does not know (e.g. $PlanetaryMiningLocation_Name; in
+# FSSBodySignals/SAASignalsFound), which otherwise fail the whole event
+# and drop all biological signal data.
+ed-journals = { version = "0.13", default-features = false, features = ["allow-unknown"] }
 ed-state = { version = "0.1", features = ["exobiology"] }
 ratatui = "0.29"

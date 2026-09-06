@@ -9,6 +9,9 @@ use ed_state::system::{PlanetSpeciesEntry, SystemState};
 pub struct SystemsState {
     pub systems: HashMap<u64, SystemState>,
     pub current: Option<u64>,
+    /// Body names by (system address, body id), from any event that carries
+    /// them. Covers bodies the state engine knows no name for (never scanned).
+    pub planet_names: HashMap<(u64, u8), String>,
 }
 
 impl EventSink for SystemsState {
@@ -26,6 +29,19 @@ impl EventSink for SystemsState {
         let Some(current) = self.current else {
             return SinkResult::Ignored;
         };
+
+        // Remember body names for the current system; the state engine only
+        // stores a name once a body has been scanned.
+        if let (Some(address), Some(body_id), Some(name)) = (
+            log_event.content.system_address(),
+            log_event.content.body_id(),
+            log_event.content.body_name(),
+        ) && address == current
+        {
+            self.planet_names
+                .entry((address, body_id))
+                .or_insert_with(|| name.to_string());
+        }
 
         // Each SystemState ignores events that don't belong to it.
         self.systems
