@@ -195,11 +195,23 @@ fn draw_header(
         .map(|info| info.star_system.as_str())
         .unwrap_or("waiting for system…");
 
+    // Counted ourselves: nr_of_scanned_bodies() also counts the stars that live in
+    // planet_state, double-counting them against star_scans.
     let bodies = match system {
-        Some(system) => match system.number_of_bodies {
-            Some(total) => format!("{}/{} bodies", system.nr_of_scanned_bodies(), total),
-            None => format!("{} bodies scanned", system.nr_of_scanned_bodies()),
-        },
+        Some(system) => {
+            let planets = system
+                .planet_state
+                .iter()
+                .filter(|(id, _)| {
+                    !system.star_scans.contains_key(id) && !system.belt_scans.contains_key(id)
+                })
+                .count();
+            let scanned = planets + system.star_scans.len();
+            match system.number_of_bodies {
+                Some(total) => format!("{}/{} bodies", scanned, total),
+                None => format!("{scanned} bodies scanned"),
+            }
+        }
         None => String::new(),
     };
 

@@ -30,6 +30,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        return Err("stdout is not a terminal, run this from an interactive terminal".into());
+    }
 
     let (tx, rx) = mpsc::channel::<LogEvent>();
     let reader_dir = journal_dir.clone();
