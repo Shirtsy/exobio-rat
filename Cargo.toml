@@ -1,0 +1,10 @@
+[package]
+name = "exobio-rat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.28"
+ed-journals = { version = "0.13", default-features = false }
+ed-state = { version = "0.1", features = ["exobiology"] }
+ratatui = "0.29"
