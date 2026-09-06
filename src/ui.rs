@@ -11,11 +11,10 @@ use ratatui::Frame;
 
 use crate::state::{is_active, is_complete, SystemsState};
 
-/// Table columns: near marker, name, landable, scan, bio, est value, exobio.
-const WIDTHS: [Constraint; 7] = [
+/// Table columns: near marker, name, scan, bio, est value, exobio.
+const WIDTHS: [Constraint; 6] = [
     Constraint::Length(2),
     Constraint::Min(22),
-    Constraint::Length(9),
     Constraint::Length(6),
     Constraint::Length(7),
     Constraint::Length(13),
@@ -343,7 +342,7 @@ fn draw_list(
     let table = Table::new(rows, WIDTHS)
         .column_spacing(1)
         .header(
-            Row::new(vec!["", "name", "landable", "scan", "bio", "est value", "exobio"])
+            Row::new(vec!["", "name", "scan", "bio", "est value", "exobio"])
                 .style(Style::default().add_modifier(Modifier::BOLD)),
         );
 
@@ -362,11 +361,6 @@ fn planet_header_row(view: &View<'_>, near: bool) -> Row<'static> {
         base
     };
 
-    let land = match &view.planet.exobiology_body {
-        Some(body) if body.landable => "landable",
-        Some(_) => "no-land",
-        None => "—",
-    };
     let scan = if view.planet.scan.is_some() {
         "full"
     } else if view.planet.saa_scan.is_some() {
@@ -388,7 +382,6 @@ fn planet_header_row(view: &View<'_>, near: bool) -> Row<'static> {
             Style::default().fg(Color::DarkGray)
         }),
         Cell::new(view.name.clone()).style(style),
-        Cell::new(land).style(style),
         Cell::new(scan).style(style),
         Cell::new(bio).style(
             Style::default()
@@ -411,7 +404,6 @@ fn inset_row(name: Line<'static>, value: Option<u64>) -> Row<'static> {
     Row::new(vec![
         Cell::new(" "),
         Cell::new(name),
-        Cell::new(""),
         Cell::new(""),
         Cell::new(""),
         match value {
