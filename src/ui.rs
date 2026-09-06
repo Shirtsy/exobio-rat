@@ -84,8 +84,8 @@ impl Ui {
 
         match code {
             KeyCode::Char('q') | KeyCode::Esc => return KeyAction::Quit,
-            KeyCode::Up | KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(3),
-            KeyCode::Down | KeyCode::Char('j') => self.scroll += 3,
+            KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(3),
+            KeyCode::Char('j') => self.scroll += 3,
             KeyCode::Char('v') => self.sort = SortMode::Value,
             KeyCode::Char('d') => self.sort = SortMode::Distance,
             KeyCode::Char('t') => self.input = Some(Input { buffer: String::new(), error: None }),
@@ -526,7 +526,7 @@ fn draw_footer(frame: &mut Frame, area: Rect, ui: &Ui) {
     let line = Line::from(vec![
         Span::styled(" q quit", dim),
         Span::raw(" · "),
-        Span::styled("↑/↓ scroll", dim),
+        Span::styled("j/k scroll", dim),
         Span::raw(" · "),
         Span::styled(
             "v value",

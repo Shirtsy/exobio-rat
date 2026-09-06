@@ -124,7 +124,9 @@ fn reader(journal_dir: PathBuf, tx: mpsc::Sender<LogEvent>) {
                             return;
                         }
                     }
-                    Err(error) => eprintln!("failed to read log entry: {error}"),
+                    // Unknown events (newer game versions) are skipped silently so
+                    // they never end up on the terminal behind the TUI.
+                    Err(_) => {}
                 }
             }
         }
