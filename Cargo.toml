@@ -1,6 +1,6 @@
 [package]
 name = "exobio-rat"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -9,6 +9,8 @@ crossterm = "0.28"
 # crate does not know (e.g. $PlanetaryMiningLocation_Name; in
 # FSSBodySignals/SAASignalsFound), which otherwise fail the whole event
 # and drop all biological signal data.
-ed-journals = { version = "0.13", default-features = false, features = ["allow-unknown"] }
+ed-journals = { version = "0.13", default-features = false, features = [
+  "allow-unknown",
+] }
 ed-state = { version = "0.1", features = ["exobiology"] }
 ratatui = "0.29"
