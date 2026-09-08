@@ -2,23 +2,20 @@ use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use ed_journals::exobiology::Species;
-use ed_state::system::{PlanetState, PlanetSpeciesEntry, SystemState};
+use ed_state::system::{PlanetSpeciesEntry, PlanetState, SystemState};
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
-use ratatui::Frame;
 
-use crate::state::{is_active, is_complete, SystemsState};
+use crate::state::{SystemsState, is_active, is_complete};
 
 /// Table columns: near marker, name, scan, bio, est value, exobio.
-const WIDTHS: [Constraint; 6] = [
+const WIDTHS: [Constraint; 3] = [
     Constraint::Length(2),
     Constraint::Min(22),
-    Constraint::Length(6),
-    Constraint::Length(7),
     Constraint::Length(13),
-    Constraint::Length(9),
 ];
 
 #[derive(Default)]
@@ -98,7 +95,12 @@ impl Ui {
             KeyCode::Char('j') => self.scroll += 3,
             KeyCode::Char('v') => self.sort = SortMode::Value,
             KeyCode::Char('d') => self.sort = SortMode::Distance,
-            KeyCode::Char('t') => self.input = Some(Input { buffer: String::new(), error: None }),
+            KeyCode::Char('t') => {
+                self.input = Some(Input {
+                    buffer: String::new(),
+                    error: None,
+                })
+            }
             _ => {}
         }
         KeyAction::Keep
@@ -241,26 +243,30 @@ fn draw_header(
 
     let near = system
         .and_then(|system| {
-            system
-                .near_body
-                .and_then(|id| {
-                    system
-                        .planet_state
-                        .get(&id)
-                        .map(|planet| body_name(system, id, planet, names))
-                })
+            system.near_body.and_then(|id| {
+                system
+                    .planet_state
+                    .get(&id)
+                    .map(|planet| body_name(system, id, planet, names))
+            })
         })
         .unwrap_or_else(|| "—".to_string());
 
     let line = Line::from(vec![
-        Span::styled(format!(" {name}"), Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!(" {name}"),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Span::raw(format!("  {bodies}")),
         Span::raw(format!("  sort: {}", ui.sort.label())),
         Span::styled(
             format!("  threshold: {}", group(ui.threshold)),
             Style::default().fg(Color::Cyan),
         ),
-        Span::styled(format!("  near: {near}"), Style::default().fg(Color::Yellow)),
+        Span::styled(
+            format!("  near: {near}"),
+            Style::default().fg(Color::Yellow),
+        ),
     ]);
 
     frame.render_widget(Paragraph::new(line), area);
@@ -290,18 +296,16 @@ fn draw_list(
     let mut order: Vec<usize> = (0..views.len()).collect();
     order.sort_by(|&a, &b| {
         let (va, vb) = (&views[a], &views[b]);
-        va.complete
-            .cmp(&vb.complete)
-            .then_with(|| match ui.sort {
-                SortMode::BodyId => va.id.cmp(&vb.id),
-                SortMode::Value => vb.estimated.cmp(&va.estimated),
-                SortMode::Distance => {
-                    // Unscanned bodies have no distance; they sort last.
-                    let ka = va.distance.map_or((1, 0.0f32), |d| (0, d));
-                    let kb = vb.distance.map_or((1, 0.0f32), |d| (0, d));
-                    ka.0.cmp(&kb.0).then_with(|| ka.1.total_cmp(&kb.1))
-                }
-            })
+        va.complete.cmp(&vb.complete).then_with(|| match ui.sort {
+            SortMode::BodyId => va.id.cmp(&vb.id),
+            SortMode::Value => vb.estimated.cmp(&va.estimated),
+            SortMode::Distance => {
+                // Unscanned bodies have no distance; they sort last.
+                let ka = va.distance.map_or((1, 0.0f32), |d| (0, d));
+                let kb = vb.distance.map_or((1, 0.0f32), |d| (0, d));
+                ka.0.cmp(&kb.0).then_with(|| ka.1.total_cmp(&kb.1))
+            }
+        })
     });
 
     let near = system.near_body;
@@ -317,7 +321,7 @@ fn draw_list(
     if rows.is_empty() {
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                " No planets with biological signals — run an FSS scan.",
+                " No planets with biological signals. ",
                 dim,
             ))),
             area,
@@ -328,9 +332,12 @@ fn draw_list(
     // Auto-scroll to keep the near planet visible; manual scroll clamps it.
     // The table header takes one row.
     let visible = area.height.saturating_sub(1) as usize;
-    if let Some(row) = near
-        .and_then(|body| header_rows.iter().find(|(id, _)| *id == body).map(|(_, row)| *row))
-    {
+    if let Some(row) = near.and_then(|body| {
+        header_rows
+            .iter()
+            .find(|(id, _)| *id == body)
+            .map(|(_, row)| *row)
+    }) {
         if row < ui.scroll {
             ui.scroll = row;
         } else if row + 1 > ui.scroll + visible {
@@ -339,12 +346,10 @@ fn draw_list(
     }
     ui.scroll = ui.scroll.min(rows.len().saturating_sub(visible));
 
-    let table = Table::new(rows, WIDTHS)
-        .column_spacing(1)
-        .header(
-            Row::new(vec!["", "name", "scan", "bio", "est value", "exobio"])
-                .style(Style::default().add_modifier(Modifier::BOLD)),
-        );
+    let table = Table::new(rows, WIDTHS).column_spacing(1).header(
+        Row::new(vec!["", "name", "est value"])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+    );
 
     let mut table_state = TableState::default();
     *table_state.offset_mut() = ui.scroll;
@@ -361,39 +366,16 @@ fn planet_header_row(view: &View<'_>, near: bool) -> Row<'static> {
         base
     };
 
-    let scan = if view.planet.scan.is_some() {
-        "full"
-    } else if view.planet.saa_scan.is_some() {
-        "saa"
-    } else {
-        "—"
-    };
-    let bio = view
-        .planet
-        .signal_counts
-        .as_ref()
-        .map(|signals| signals.biological_signal_count.to_string())
-        .unwrap_or_default();
-
     Row::new(vec![
         Cell::new(if near { "@" } else { " " }).style(if near {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::DarkGray)
         }),
         Cell::new(view.name.clone()).style(style),
-        Cell::new(scan).style(style),
-        Cell::new(bio).style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
         Cell::new(format!("{:>12}", group(view.estimated))).style(style),
-        Cell::new(if view.complete { "✓" } else { "" }).style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
     ])
 }
 
@@ -404,13 +386,10 @@ fn inset_row(name: Line<'static>, value: Option<u64>) -> Row<'static> {
     Row::new(vec![
         Cell::new(" "),
         Cell::new(name),
-        Cell::new(""),
-        Cell::new(""),
         match value {
             Some(value) => Cell::new(format!("{:>12}", group(value))).style(dim),
             None => Cell::new(""),
         },
-        Cell::new(""),
     ])
 }
 
@@ -435,7 +414,10 @@ fn planet_inset_rows(view: &View<'_>, ui: &Ui) -> Vec<Row<'static>> {
         for (count, label, color) in kinds {
             any = true;
             spans.push(Span::raw(" "));
-            spans.push(Span::styled(format!("{label} {count}"), Style::default().fg(color)));
+            spans.push(Span::styled(
+                format!("{label} {count}"),
+                Style::default().fg(color),
+            ));
         }
         if !any {
             spans.push(Span::styled(" none", dim));
@@ -462,11 +444,7 @@ fn planet_inset_rows(view: &View<'_>, ui: &Ui) -> Vec<Row<'static>> {
         let value = entry.species.base_value();
 
         let (bucket, marker, marker_style) = if entry.completed {
-            (
-                1,
-                "✓✓✓".to_string(),
-                Style::default().fg(Color::Green),
-            )
+            (1, "✓✓✓".to_string(), Style::default().fg(Color::Green))
         } else if !active {
             (2, "·".to_string(), dim)
         } else if entry.confirmed {
@@ -484,7 +462,11 @@ fn planet_inset_rows(view: &View<'_>, ui: &Ui) -> Vec<Row<'static>> {
     }
 
     // Scanned organics the prediction did not list.
-    let predicted: Vec<Species> = view.entries.iter().map(|entry| entry.species.clone()).collect();
+    let predicted: Vec<Species> = view
+        .entries
+        .iter()
+        .map(|entry| entry.species.clone())
+        .collect();
     for organic in view.planet.organics.values() {
         if predicted.contains(&organic.species) {
             continue;
@@ -528,10 +510,7 @@ fn planet_inset_rows(view: &View<'_>, ui: &Ui) -> Vec<Row<'static>> {
         } else {
             "  no spawnable species predicted"
         };
-        rows.push(inset_row(
-            Line::from(Span::styled(hint, dim)),
-            None,
-        ));
+        rows.push(inset_row(Line::from(Span::styled(hint, dim)), None));
     } else if excluded > 0 {
         rows.push(inset_row(
             Line::from(Span::styled(
@@ -620,7 +599,7 @@ fn group(value: u64) -> String {
     for (i, digit) in digits.chars().enumerate() {
         result.push(digit);
         let remaining = total - i - 1;
-        if remaining > 0 && remaining % 3 == 0 {
+        if remaining > 0 && remaining.is_multiple_of(3) {
             result.push(',');
         }
     }
