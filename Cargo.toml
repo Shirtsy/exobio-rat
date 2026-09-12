@@ -4,6 +4,7 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
+arboard = "3.6.1"
 crossterm = "0.28"
 # allow-unknown is required: current game versions emit signal types the
 # crate does not know (e.g. $PlanetaryMiningLocation_Name; in
@@ -14,3 +15,5 @@ ed-journals = { version = "0.13", default-features = false, features = [
 ] }
 ed-state = { version = "0.1", features = ["exobiology"] }
 ratatui = "0.29"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
