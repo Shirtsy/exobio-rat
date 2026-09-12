@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ed_journals::exobiology::Species;
 use ed_state::system::{PlanetSpeciesEntry, PlanetState, SystemState};
@@ -31,6 +32,10 @@ pub struct Ui {
     pub route: Option<Route>,
     /// Set when a clipboard write failed; the route panel shows it.
     pub copy_error: bool,
+    /// Kept for the app's lifetime: dropping the clipboard soon after a
+    /// write can make clipboard managers miss the contents (on X11 it also
+    /// triggers a debug-mode eprintln that would garble the TUI).
+    pub clipboard: Option<Clipboard>,
 }
 
 pub struct Input {

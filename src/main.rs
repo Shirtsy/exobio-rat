@@ -123,12 +123,17 @@ fn app_loop(
 }
 
 /// Copy text to the system clipboard, recording failure in the UI for the
-/// route panel to display.
+/// route panel to display. The clipboard is created once and kept alive: it
+/// owns the selection, so dropping it right after a write can lose the
+/// contents.
 fn copy_text(ui: &mut Ui, text: &str) {
-    match Clipboard::new() {
-        Ok(mut clipboard) => ui.copy_error = clipboard.set_text(text).is_err(),
-        Err(_) => ui.copy_error = true,
+    if ui.clipboard.is_none() {
+        ui.clipboard = Clipboard::new().ok();
     }
+    ui.copy_error = match ui.clipboard.as_mut() {
+        Some(clipboard) => clipboard.set_text(text).is_err(),
+        None => true,
+    };
 }
 
 /// Reads the journal live in the background: watches the directory, follows
