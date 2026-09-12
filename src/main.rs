@@ -1,3 +1,4 @@
+mod route;
 mod state;
 mod ui;
 
@@ -7,6 +8,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -77,17 +79,55 @@ fn app_loop(
             systems.sink_log(&event);
         }
 
+        // Tick off route stops for wherever the player is. Idempotent, so it
+        // also snaps the index forward when a route is loaded mid-route.
+        // Any advance copies the new next destination for the in-game map.
+        let copy_name = if let (Some(address), Some(route)) =
+            (systems.current, ui.route.as_mut())
+        {
+            if route.advance(address) {
+                route.next().map(|next| next.name.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(name) = copy_name {
+            copy_text(ui, &name);
+        }
+
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if ui.handle_key(key.code, key.modifiers) == KeyAction::Quit {
-                        return Ok(());
+                    match ui.handle_key(key.code, key.modifiers) {
+                        KeyAction::Quit => return Ok(()),
+                        KeyAction::CopyNext => {
+                            let name = ui
+                                .route
+                                .as_ref()
+                                .and_then(|route| route.next())
+                                .map(|next| next.name.clone());
+                            if let Some(name) = name {
+                                copy_text(ui, &name);
+                            }
+                        }
+                        KeyAction::Keep => {}
                     }
                 }
             }
         }
 
         terminal.draw(|frame| ui::draw(frame, systems, ui))?;
+    }
+}
+
+/// Copy text to the system clipboard, recording failure in the UI for the
+/// route panel to display.
+fn copy_text(ui: &mut Ui, text: &str) {
+    match Clipboard::new() {
+        Ok(mut clipboard) => ui.copy_error = clipboard.set_text(text).is_err(),
+        Err(_) => ui.copy_error = true,
     }
 }
 

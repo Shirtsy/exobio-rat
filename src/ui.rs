@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use ed_journals::exobiology::Species;
@@ -9,6 +10,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
 
+use crate::route::Route;
 use crate::state::{SystemsState, is_active, is_complete};
 
 /// Table columns: near marker, name, scan, bio, est value, exobio.
@@ -26,11 +28,20 @@ pub struct Ui {
     pub threshold: u64,
     pub input: Option<Input>,
     pub last_system: Option<u64>,
+    pub route: Option<Route>,
+    /// Set when a clipboard write failed; the route panel shows it.
+    pub copy_error: bool,
 }
 
 pub struct Input {
+    pub mode: InputMode,
     pub buffer: String,
     pub error: Option<String>,
+}
+
+pub enum InputMode {
+    Threshold,
+    RoutePath,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -55,6 +66,7 @@ impl SortMode {
 pub enum KeyAction {
     Keep,
     Quit,
+    CopyNext,
 }
 
 impl Ui {
@@ -63,16 +75,35 @@ impl Ui {
         if self.input.is_some() {
             match code {
                 KeyCode::Esc => self.input = None,
-                KeyCode::Enter => {
-                    let buffer = self.input.as_ref().unwrap().buffer.clone();
-                    match buffer.parse::<u64>() {
-                        Ok(value) => {
-                            self.threshold = value;
-                            self.input = None;
+                KeyCode::Enter => match self.input.as_ref().unwrap().mode {
+                    InputMode::Threshold => {
+                        let buffer = self.input.as_ref().unwrap().buffer.clone();
+                        match buffer.parse::<u64>() {
+                            Ok(value) => {
+                                self.threshold = value;
+                                self.input = None;
+                            }
+                            Err(_) => {
+                                self.input.as_mut().unwrap().error =
+                                    Some("not a valid number".to_string())
+                            }
                         }
-                        Err(_) => {
+                    }
+                    InputMode::RoutePath => {
+                        let buffer = self.input.as_ref().unwrap().buffer.trim().to_string();
+                        if buffer.is_empty() {
                             self.input.as_mut().unwrap().error =
-                                Some("not a valid number".to_string())
+                                Some("enter a route file path".to_string());
+                        } else {
+                            match Route::from_file(Path::new(&buffer)) {
+                                Ok(route) => {
+                                    self.route = Some(route);
+                                    self.input = None;
+                                }
+                                Err(error) => {
+                                    self.input.as_mut().unwrap().error = Some(error)
+                                }
+                            }
                         }
                     }
                 }
@@ -97,9 +128,20 @@ impl Ui {
             KeyCode::Char('d') => self.sort = SortMode::Distance,
             KeyCode::Char('t') => {
                 self.input = Some(Input {
+                    mode: InputMode::Threshold,
                     buffer: String::new(),
                     error: None,
                 })
+            }
+            KeyCode::Char('r') => {
+                self.input = Some(Input {
+                    mode: InputMode::RoutePath,
+                    buffer: String::new(),
+                    error: None,
+                })
+            }
+            KeyCode::Char('c') if self.route.as_ref().is_some_and(|route| !route.complete()) => {
+                return KeyAction::CopyNext
             }
             _ => {}
         }
@@ -179,12 +221,23 @@ fn build_views<'a>(
 
 pub fn draw(frame: &mut Frame, systems: &SystemsState, ui: &mut Ui) {
     let area = frame.area();
-    let chunks = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(0),
-        Constraint::Length(1),
-    ])
-    .split(area);
+    let has_route = ui.route.is_some();
+    let chunks = if has_route {
+        Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(2),
+            Constraint::Length(1),
+        ])
+        .split(area)
+    } else {
+        Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(area)
+    };
 
     let (system_address, system) = match systems.current {
         Some(address) => (Some(address), systems.systems.get(&address)),
@@ -203,7 +256,12 @@ pub fn draw(frame: &mut Frame, systems: &SystemsState, ui: &mut Ui) {
 
     draw_header(frame, chunks[0], system, &systems.planet_names, ui);
     draw_list(frame, chunks[1], system, &views, ui);
-    draw_footer(frame, chunks[2], ui);
+    if let Some(route) = &ui.route {
+        draw_route(frame, chunks[2], route, ui);
+        draw_footer(frame, chunks[3], ui);
+    } else {
+        draw_footer(frame, chunks[2], ui);
+    }
 
     if let Some(input) = &ui.input {
         draw_popup(frame, area, input);
@@ -524,6 +582,66 @@ fn planet_inset_rows(view: &View<'_>, ui: &Ui) -> Vec<Row<'static>> {
     rows
 }
 
+fn draw_route(frame: &mut Frame, area: Rect, route: &Route, ui: &Ui) {
+    let dim = Style::default().add_modifier(Modifier::DIM);
+
+    let (first, second) = match route.next() {
+        // Route complete: one line, that's it.
+        None => (
+            Line::from(Span::styled(
+                " route complete ✓ ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::default(),
+        ),
+        Some(next) => {
+            let (visited, total) = (route.visited(), route.len());
+            let last = route
+                .last()
+                .map(|stop| format!("  last: {}", stop.name))
+                .unwrap_or_default();
+            let first = Line::from(vec![
+                Span::styled(
+                    format!(" route {visited}/{total} "),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(progress_bar(visited, total, 20)),
+                Span::styled(format!(" {}%", visited * 100 / total), dim),
+                Span::styled(last, dim),
+            ]);
+            let copy_hint = if ui.copy_error {
+                Span::styled("  clipboard unavailable", Style::default().fg(Color::Red))
+            } else {
+                Span::styled("  [c] copy", dim)
+            };
+            let second = Line::from(vec![
+                Span::raw(" next: "),
+                Span::styled(next.name.clone(), Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!(" ({} {})", next.jumps, jump_word(next.jumps)),
+                    dim,
+                ),
+                copy_hint,
+            ]);
+            (first, second)
+        }
+    };
+
+    frame.render_widget(Paragraph::new(vec![first, second]), area);
+}
+
+/// A fixed-width block bar: filled for visited stops, empty for the rest.
+fn progress_bar(visited: usize, total: usize, width: usize) -> String {
+    let filled = visited * width / total;
+    format!("{}{}", "▓".repeat(filled), "░".repeat(width - filled))
+}
+
+fn jump_word(jumps: u32) -> &'static str {
+    if jumps == 1 { "jump" } else { "jumps" }
+}
+
 fn draw_footer(frame: &mut Frame, area: Rect, ui: &Ui) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let active = Style::default().add_modifier(Modifier::BOLD);
@@ -551,13 +669,29 @@ fn draw_footer(frame: &mut Frame, area: Rect, ui: &Ui) {
         ),
         Span::raw(" · "),
         Span::styled("t threshold", dim),
+        Span::raw(" · "),
+        Span::styled("r route", dim),
+        Span::raw(" · "),
+        Span::styled(
+            "c copy",
+            if ui.route.as_ref().is_some_and(|route| !route.complete()) {
+                active
+            } else {
+                dim
+            },
+        ),
         Span::raw(format!("   journal: {}", ui.journal_dir)),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
 
 fn draw_popup(frame: &mut Frame, area: Rect, input: &Input) {
-    let width = 40u16.min(area.width.saturating_sub(2));
+    // Route paths can be long; give that mode a wider box.
+    let width = match input.mode {
+        InputMode::Threshold => 40u16,
+        InputMode::RoutePath => 64u16,
+    }
+    .min(area.width.saturating_sub(2));
     let height = 5u16.min(area.height.saturating_sub(2));
     let popup = Rect::new(
         area.x + (area.width.saturating_sub(width)) / 2,
@@ -574,6 +708,10 @@ fn draw_popup(frame: &mut Frame, area: Rect, input: &Input) {
         )),
     };
 
+    let title = match input.mode {
+        InputMode::Threshold => " Species value threshold ",
+        InputMode::RoutePath => " Load route file ",
+    };
     let content = Paragraph::new(vec![
         Line::from(Span::styled(
             format!("> {}", input.buffer),
@@ -584,7 +722,7 @@ fn draw_popup(frame: &mut Frame, area: Rect, input: &Input) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Species value threshold "),
+            .title(title),
     )
     .alignment(Alignment::Center);
 
