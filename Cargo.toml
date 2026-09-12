@@ -4,7 +4,9 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-arboard = "3.6.1"
+# wayland-data-control is not a default feature: without it, arboard
+# silently falls back to X11 on Wayland sessions.
+arboard = { version = "3.6.1", features = ["wayland-data-control"] }
 crossterm = "0.28"
 # allow-unknown is required: current game versions emit signal types the
 # crate does not know (e.g. $PlanetaryMiningLocation_Name; in
