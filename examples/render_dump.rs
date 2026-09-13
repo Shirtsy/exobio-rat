@@ -1,14 +1,16 @@
 //! Renders the app's UI for a static journal directory into a plain-text dump.
 //! Verification aid only (no pty needed):
-//!   cargo run --example render_dump -- <journal dir> [width] [height] [id|value|dist] [threshold]
+//!   cargo run --example render_dump -- <journal dir> [width] [height] [id|value|dist] [threshold] [route file]
 #![allow(dead_code)]
 
+#[path = "../src/route.rs"]
+mod route;
 #[path = "../src/state.rs"]
 mod state;
 #[path = "../src/ui.rs"]
 mod ui;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ed_journals::fs::LogDir;
 use ed_journals::io::LogIter;
@@ -41,6 +43,11 @@ fn main() {
         .nth(5)
         .and_then(|t| t.parse().ok())
         .unwrap_or(0);
+    let route = std::env::args()
+        .nth(6)
+        .map(|path| route::Route::from_file(Path::new(&path)))
+        .transpose()
+        .expect("bad route file");
 
     use ui::SortMode;
 
@@ -68,6 +75,7 @@ fn main() {
         journal_dir: dir,
         sort,
         threshold,
+        route,
         ..Default::default()
     };
     let backend = TestBackend::new(width, height);

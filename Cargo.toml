@@ -1,9 +1,12 @@
 [package]
 name = "exobio-rat"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
+# wayland-data-control is not a default feature: without it, arboard
+# silently falls back to X11 on Wayland sessions.
+arboard = { version = "3.6.1", features = ["wayland-data-control"] }
 crossterm = "0.28"
 # allow-unknown is required: current game versions emit signal types the
 # crate does not know (e.g. $PlanetaryMiningLocation_Name; in
@@ -14,3 +17,5 @@ ed-journals = { version = "0.13", default-features = false, features = [
 ] }
 ed-state = { version = "0.1", features = ["exobiology"] }
 ratatui = "0.29"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
